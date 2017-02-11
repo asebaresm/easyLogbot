@@ -38,6 +38,7 @@ import os
 import ftplib
 import sys
 import itertools
+import time
 from time import strftime
 try:
     from datetime import datetime
@@ -79,10 +80,9 @@ NICK_PASS = ""
 
 # Folder to save logs
 LOG_FOLDER = "/home/arave/webapps/redes2logs/logs"
-#LOG_FOLDER = "pruebas"
 
 # The message returned when someone messages the bot
-HELP_MESSAGE = "Soy un bot. Visita redes2.initelia.com para ver los chat logs. /msg aserver_ si algo se rompe."
+HELP_MESSAGE = "Soy un bot. Visita redes2.initelia.com para ver los chat logs"
 
 # FTP Configuration
 FTP_SERVER = ""
@@ -119,43 +119,7 @@ html_header = """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>%title%</title>
-    <style type="text/css">
-        body {
-            background-color: #F8F8FF;
-            font-family: Fixed, monospace;
-            font-size: 13px;
-        }
-        h1 {
-            font-family: sans-serif;
-            font-size: 28px;
-            text-align: center;
-        }
-        a, .time {
-            color: #525552;
-            text-decoration: none;
-        }
-        a:hover, .time:hover { text-decoration: underline; }
-        .person { color: #DD1144; }
-        .join, .part, .quit, .kick, .mode, .topic, .nick { color: #42558C; }
-        .notice { color: #AE768C; }
-
-        footer {
-            background-color: #F8F8FF;
-            font-family: Fixed, monospace;
-            font-size: 13px;
-            position:fixed;
-            left:0px;
-            bottom:0px;
-            height:30px;
-            width:100%;
-            text-align:center;
-        }
-
-        #back {
-            font-weight: bold;
-            color: #000000; /*Negro*/
-        }
-    </style>
+    <link href="horror.css" rel="stylesheet" type="text/css">
   </head>
   <body>
   <h1>%title%</h1>
@@ -165,16 +129,70 @@ html_header = """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
             alfonso.sebares@estudiante.uam.es | Codigo base: https://github.com/excid3/logbot 
             </h4>
       </footer>
+  <div class="wrap">
+  </div>
   </body>
 </html>
 """
+css_file = """
+body {
+    background-color: #F8F8FF;
+    font-family: Fixed, monospace;
+    font-size: 13px;
+}
+h1 {
+    font-family: sans-serif;
+    font-size: 28px;
+    text-align: center;
+}
+a, .time {
+    color: #525552;
+    text-decoration: none;
+}
+a:hover, .time:hover { text-decoration: underline; }
+.person { color: #DD1144; }
+.join, .part, .quit, .kick, .mode, .topic, .nick { color: #42558C; }
+.notice { color: #AE768C; }
 
+.wrap {
+    height: auto;
+    margin: 0 auto -25px; /* footer height + space */
+    min-height: 100%;
+    padding: 0 0 25px; /* footer height + space */
+    box-sizing: border-box;
+    overflow: auto;
+}
+
+footer {
+    background-color: #F8F8FF;
+    font-family: Fixed, monospace;
+    font-size: 13px;
+    position:fixed;
+    left:0px;
+    bottom:0px;
+    height:30px;
+    width:100%;
+    text-align:center;
+}
+
+.footer {
+    height: 30px;  /* footer height */
+    padding-top: 20px;
+    display: block;
+    margin-top: 5px; /* space between content and footer */
+    box-sizing: border-box;
+}
+
+#back {
+    font-weight: bold;
+    color: #000000; /*Negro*/
+}"""
 
 ### Helper functions
 
 def append_line(filename, line):
-    data = open(filename, "rb").readlines()[:-2]
-    data += [line, "\n<br />", "\n</body>", "\n</html>"]
+    data = open(filename, "rb").readlines()[:-3]
+    data += [line, "\n<br />", "\n</div>", "\n</body>", "\n</html>"]
     write_lines(filename, data)
 
 def write_lines(filename, lines):
@@ -285,17 +303,23 @@ class Logbot(SingleServerIRCBot):
         c.privmsg(e.target(), dance_msg)
         self.force_pubmsg_log(BCAST_CHANS, NICK, dance_msg)
 
+    def do_logreminder(self, c, e):
+        reminder_msg = "Echa un vistazo a los logs de hoy en http://redes2.initelia.com/%23redes2/"+time.strftime("%Y-%m-%d")+".html"
+        c.privmsg(e.target(), reminder_msg)
+        self.force_pubmsg_log(BCAST_CHANS, NICK, reminder_msg)
+
     ## DICT WITH ADMIN FUNCTIONS
     def init_admin(self):
         self.dispatch = {
             "!robodance": self.do_robodance,
+            "!reminder": self.do_logreminder,
         }
 
     #Admin command parse and fire
     def admin_command(self, c, e):
         self.init_admin()
         words = e.arguments()[0].split()
-        command = words[1]
+        command = words[0]
 
         if command not in self.dispatch:
             self.do_command_err(c,e)
@@ -404,6 +428,9 @@ class Logbot(SingleServerIRCBot):
             # Create channel index
             write_string("%s/index.html" % chan_path, html_header.replace("%title%", "%s | Logs" % channel_title))
 
+            #Create css
+            write_lines("%s/horror.css" % chan_path, css_file)
+
             # Append channel to log index
             append_line("%s/index.html" % LOG_FOLDER, '<a href="%s/index.html">%s</a>' % (channel.replace("#", "%23"), channel_title))
 
@@ -421,6 +448,9 @@ class Logbot(SingleServerIRCBot):
         # Create the log date index if it doesnt exist
         if not os.path.exists(log_path):
             write_string(log_path, html_header.replace("%title%", "%s | Logs for %s" % (channel_title, date)))
+
+            #Create css
+            write_lines("%s/horror.css" % chan_path, css_file)
 
             # Append date log
             append_line("%s/index.html" % chan_path, '<a href="%s.html">%s</a>' % (date, date))
@@ -519,34 +549,38 @@ class Logbot(SingleServerIRCBot):
     #TO-DO: reshape, maybe
     def on_pubmsg(self, c, e):
         self.write_event("pubmsg", e)
+        #process normal bot mention
         if e.arguments()[0].startswith(NICK):
-            if nm_to_n(e.source()) in ADMIN_NICKs:
-                #Admin command processing
-                self.admin_command(c,e)
-            else:
-                #Normal user interaction
-                #   Gives the default info for now
-                if self.LAST_MSG is not None:
-                    timestamp2 = datetime.now().ctime()
-                    t1 = datetime.strptime(self.LAST_MSG, "%a %b  %d %H:%M:%S %Y")
-                    t2 = datetime.strptime(timestamp2, "%a %b  %d %H:%M:%S %Y")
-                    diff = t2 - t1
+            if self.LAST_MSG is not None:
+                timestamp2 = datetime.now().ctime()
+                t1 = datetime.strptime(self.LAST_MSG, "%a %b  %d %H:%M:%S %Y")
+                t2 = datetime.strptime(timestamp2, "%a %b  %d %H:%M:%S %Y")
+                diff = t2 - t1
 
-                    if diff.seconds > 30:
-                        self.LAST_MSG = datetime.now().ctime()
-                        self.spam_count = 0
-                        c.privmsg(e.target(), self.format["help"])
-                        self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["help"])
-                    else:
-                        self.spam_count += 1
-                        if self.spam_count >= 3:
-                            c.privmsg(e.target(), self.format["spam_count"])
-                            self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["spam_count"])
-                            self.spam_count = 0
-                else:
+                if diff.seconds > 30:
                     self.LAST_MSG = datetime.now().ctime()
+                    self.spam_count = 0
                     c.privmsg(e.target(), self.format["help"])
                     self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["help"])
+                else:
+                    self.spam_count += 1
+                    if self.spam_count >= 3:
+                        c.privmsg(e.target(), self.format["spam_count"])
+                        self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["spam_count"])
+                        self.spam_count = 0
+            else:
+                self.LAST_MSG = datetime.now().ctime()
+                c.privmsg(e.target(), self.format["help"])
+                self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["help"])
+        else:
+            #process bot command
+            if e.arguments()[0][0] == '!':
+                #process admin command
+                if nm_to_n(e.source()) in ADMIN_NICKs:
+                    self.admin_command(c,e)
+                #process normal user command:
+                else:
+                    pass #self.normal_command(c,e)
         return
 
     def on_pubnotice(self, c, e):
@@ -587,6 +621,10 @@ def main():
     if not os.path.exists(LOG_FOLDER):
         os.makedirs(LOG_FOLDER)
         write_string("%s/index.html" % LOG_FOLDER, html_header.replace("%title%", "IRC Chat Logs"))
+
+        #Create css
+        write_lines("%s/horror.css" % LOG_FOLDER, css_file)
+
 
     # Start the bot
     bot = Logbot(SERVER, PORT, SERVER_PASS, CHANNELS, NICK, NICK_PASS)
