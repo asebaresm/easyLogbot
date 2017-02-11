@@ -1,18 +1,16 @@
-LogBot 0.4.2
+easyBot 0.5
 ============
 
-Written by Chris Oliver <chris@excid3.com>
-
-Many thanks to Filip Slagter for his contributions.
+Sections of this README are relayed from the original code repository which served as starting point for this implementation.
+Original code written by Chris Oliver with Filip Slagter contributions:
+https://github.com/excid3/logbot
 
 Usage
 -----
-LogBot requires Python 2. It is NOT compatible with Python 3.
+easyBot requires Python 2. It is NOT compatible with Python 3.
 Configuration is done inside logbot.py.
 
     python logbot.py
-
-Example logs at https://raw.github.com/excid3/logbot/master/example_logs/2011-10-22.html
 
 
 Channels with localised time
