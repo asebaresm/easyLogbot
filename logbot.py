@@ -27,7 +27,7 @@
 
 
 __author__ = "Chris Oliver <excid3@gmail.com>"
-__version__ = "0.4.2"
+__version__ = "0.5"
 __date__ = "08/11/2009"
 __copyright__ = "Copyright (c) Chris Oliver"
 __license__ = "GPL2"
@@ -66,18 +66,23 @@ def urlify2(value):
 DEBUG = False
 
 # IRC Server Configuration
-SERVER = "irc.freenode.net"
+SERVER = "metis.ii.uam.es"
 PORT = 6667
 SERVER_PASS = None
-CHANNELS=["#excid3","#keryx"]
-NICK = "timber"
+CHANNELS=["#redes2"]
+BCAST_CHANS=["#redes2"]
+MAIN_CHANNEL = "#redes2"
+NICK = "logbot"
+NICKS = ["logbot", "logbot_", "logbot__", "logbot___"]
+ADMIN_NICKs = ["aserver", "aserver_", "aserver__", "aserver___", ]
 NICK_PASS = ""
 
-# The local folder to save logs
-LOG_FOLDER = "logs"
+# Folder to save logs
+LOG_FOLDER = "/home/arave/webapps/redes2logs/logs"
+#LOG_FOLDER = "pruebas"
 
 # The message returned when someone messages the bot
-HELP_MESSAGE = "Check out http://excid3.com"
+HELP_MESSAGE = "Soy un bot. Visita redes2.initelia.com para ver los chat logs. /msg aserver_ si algo se rompe."
 
 # FTP Configuration
 FTP_SERVER = ""
@@ -93,6 +98,9 @@ DEFAULT_TIMEZONE = 'UTC'
 
 default_format = {
     "help" : HELP_MESSAGE,
+    "alt_help" : "Overheat!",
+    "spam_count" : "Dejarme tranquilo un poco pls ;_;",
+    "ad" : "[Recordatorio]: los chat logs a diario en redes2.initelia.com",
     "action" : '<span class="person" style="color:%color%">* %user% %message%</span>',
     "join" : '-!- <span class="join">%user%</span> [%host%] has joined %channel%',
     "kick" : '-!- <span class="kick">%user%</span> was kicked from %channel% by %kicker% [%reason%]',
@@ -119,7 +127,7 @@ html_header = """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
         }
         h1 {
             font-family: sans-serif;
-            font-size: 24px;
+            font-size: 28px;
             text-align: center;
         }
         a, .time {
@@ -130,11 +138,33 @@ html_header = """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
         .person { color: #DD1144; }
         .join, .part, .quit, .kick, .mode, .topic, .nick { color: #42558C; }
         .notice { color: #AE768C; }
+
+        footer {
+            background-color: #F8F8FF;
+            font-family: Fixed, monospace;
+            font-size: 13px;
+            position:fixed;
+            left:0px;
+            bottom:0px;
+            height:30px;
+            width:100%;
+            text-align:center;
+        }
+
+        #back {
+            font-weight: bold;
+            color: #000000; /*Negro*/
+        }
     </style>
   </head>
   <body>
   <h1>%title%</h1>
-  <a href="..">Back</a><br />
+  <a id="back" href="..">Back</a><br/>
+      <footer>
+            <h4 class="bottomMargin">
+            alfonso.sebares@estudiante.uam.es | Codigo base: https://github.com/excid3/logbot 
+            </h4>
+      </footer>
   </body>
 </html>
 """
@@ -222,6 +252,14 @@ class Logbot(SingleServerIRCBot):
         self.count = 0
         self.nick_pass = nick_pass
 
+        #Added
+        self.LAST_MSG = None
+        self.LAST_AD = None
+        self.HOUR_INTERVAL = 2
+        self.spam_count = 0
+
+        self.dispatch = None
+
         self.load_channel_locations()
         print "Logbot %s" % __version__
         print "Connecting to %s:%i..." % (server, port)
@@ -235,6 +273,53 @@ class Logbot(SingleServerIRCBot):
 
     def set_ftp(self, ftp=None):
         self.ftp = ftp
+
+    ## ADMIN COMMANDS SECTION
+    def do_command_err(self, c, e):
+        err_msg = "Comando no reconocido :thinking:"
+        c.privmsg(e.target(), err_msg)
+        self.force_pubmsg_log(BCAST_CHANS, NICK, err_msg)
+
+    def do_robodance(self, c, e):
+        dance_msg = "♬ ♩ └[∵┌]└[ ∵ ]┘[┐∵]┘ ♪ ♫"
+        c.privmsg(e.target(), dance_msg)
+        self.force_pubmsg_log(BCAST_CHANS, NICK, dance_msg)
+
+    ## DICT WITH ADMIN FUNCTIONS
+    def init_admin(self):
+        self.dispatch = {
+            "!robodance": self.do_robodance,
+        }
+
+    #Admin command parse and fire
+    def admin_command(self, c, e):
+        self.init_admin()
+        words = e.arguments()[0].split()
+        command = words[1]
+
+        if command not in self.dispatch:
+            self.do_command_err(c,e)
+        else:
+            self.dispatch[command](c,e)
+
+    ##OTHER FUNCTIONS FOR BOT MANAGEMENT
+
+    #Force to log a broadcast message ("pubmsg") with no direct
+    #triggering event that were not being logged previously (pre 0.5)
+    #(e.g. welcome msg after join, answering a tag, etc)
+    #   chans - MUST be a list, channels to broadcast
+    #   user  - usually 'NICK' of the bot
+    def force_pubmsg_log(self, chans, user, msg_str):
+        msg = self.format["pubmsg"]
+        msg = msg.replace("%user%", NICK)
+        msg = msg.replace("%color%", self.color(NICK))
+        user_msg = cgi.escape(msg_str)
+        msg = msg.replace("%message%", html_color(user_msg))
+        
+        msg = urlify2(msg)
+
+        for chan in chans:
+            self.append_log_msg(chan, msg)
 
     def format_event(self, name, event, params):
         msg = self.format[name]
@@ -306,7 +391,7 @@ class Logbot(SingleServerIRCBot):
             print "Finished uploading"
 
     def append_log_msg(self, channel, msg):
-        print "%s >>> %s" % (channel, msg)
+        if DEBUG: print "%s >>> %s" % (channel, msg)
         #Make sure the channel is always lowercase to prevent logs with other capitalisations to be created
         channel_title = channel
         channel = channel.lower()
@@ -345,6 +430,26 @@ class Logbot(SingleServerIRCBot):
                                           (time, time, time, msg)
         append_line(log_path, message)
 
+
+    def welcome(self, c, e):
+        welcome_msg = "Bienvenido %s :)" % nm_to_n(e.source())
+        if self.LAST_AD is not None:
+            timestamp2 = datetime.now().ctime()
+            t1 = datetime.strptime(self.LAST_AD, "%a %b  %d %H:%M:%S %Y")
+            t2 = datetime.strptime(timestamp2, "%a %b  %d %H:%M:%S %Y")
+            diff = t2 - t1
+
+            if diff.seconds/60/60 >= 2:
+                c.privmsg(MAIN_CHANNEL, welcome_msg)
+                self.force_pubmsg_log(BCAST_CHANS, NICK, welcome_msg)
+                self.LAST_AD = datetime.now().ctime()
+        else:
+            #c.send_raw(self.format["ad"])
+            c.privmsg(MAIN_CHANNEL, welcome_msg)
+            self.force_pubmsg_log(BCAST_CHANS, NICK, welcome_msg)
+            self.LAST_AD = datetime.now().ctime()
+        return
+
     ### These are the IRC events
 
     def on_all_raw_messages(self, c, e):
@@ -376,6 +481,11 @@ class Logbot(SingleServerIRCBot):
 
     def on_join(self, c, e):
         self.write_event("join", e)
+        #Avoid welcoming itself
+        if nm_to_n(e.source()) not in NICKS:
+            self.welcome(c,e)
+        #debug c.privmsg("#pruebas", "Alguien se ha conectado!")
+        
 
     def on_kick(self, c, e):
         self.write_event("kick", e,
@@ -406,17 +516,47 @@ class Logbot(SingleServerIRCBot):
     def on_part(self, c, e):
         self.write_event("part", e)
 
+    #TO-DO: reshape, maybe
     def on_pubmsg(self, c, e):
-        if e.arguments()[0].startswith(NICK):
-            c.privmsg(e.target(), self.format["help"])
         self.write_event("pubmsg", e)
+        if e.arguments()[0].startswith(NICK):
+            if nm_to_n(e.source()) in ADMIN_NICKs:
+                #Admin command processing
+                self.admin_command(c,e)
+            else:
+                #Normal user interaction
+                #   Gives the default info for now
+                if self.LAST_MSG is not None:
+                    timestamp2 = datetime.now().ctime()
+                    t1 = datetime.strptime(self.LAST_MSG, "%a %b  %d %H:%M:%S %Y")
+                    t2 = datetime.strptime(timestamp2, "%a %b  %d %H:%M:%S %Y")
+                    diff = t2 - t1
+
+                    if diff.seconds > 30:
+                        self.LAST_MSG = datetime.now().ctime()
+                        self.spam_count = 0
+                        c.privmsg(e.target(), self.format["help"])
+                        self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["help"])
+                    else:
+                        self.spam_count += 1
+                        if self.spam_count >= 3:
+                            c.privmsg(e.target(), self.format["spam_count"])
+                            self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["spam_count"])
+                            self.spam_count = 0
+                else:
+                    self.LAST_MSG = datetime.now().ctime()
+                    c.privmsg(e.target(), self.format["help"])
+                    self.force_pubmsg_log(BCAST_CHANS, NICK, self.format["help"])
+        return
 
     def on_pubnotice(self, c, e):
         self.write_event("pubnotice", e)
 
+    #Timeouts go here?
     def on_privmsg(self, c, e):
         print nm_to_n(e.source()), e.arguments()
         c.privmsg(nm_to_n(e.source()), self.format["help"])
+        self.write_event("pubmsg", e)
 
     def on_quit(self, c, e):
         nick = nm_to_n(e.source())
@@ -446,7 +586,7 @@ def main():
     # Create the logs directory
     if not os.path.exists(LOG_FOLDER):
         os.makedirs(LOG_FOLDER)
-        write_string("%s/index.html" % LOG_FOLDER, html_header.replace("%title%", "Chat Logs"))
+        write_string("%s/index.html" % LOG_FOLDER, html_header.replace("%title%", "IRC Chat Logs"))
 
     # Start the bot
     bot = Logbot(SERVER, PORT, SERVER_PASS, CHANNELS, NICK, NICK_PASS)
@@ -458,6 +598,7 @@ def main():
         bot.start()
     except KeyboardInterrupt:
         if FTP_SERVER: bot.ftp.quit()
+        print "\nClosing..."
         bot.quit()
 
 
